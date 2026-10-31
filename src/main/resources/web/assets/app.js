@@ -94,9 +94,15 @@ let state = {
 };
 
 let skinViewer = null;
+let availableCapes = [];
+let canUploadPublicCape = false;
+let selectedCapeUuid = null;
+let hasAppliedCape = false;
+let previewEquipment = 'cape';
 let editorViewer = null;
 let showGuide = true;
 let editorInited = false;
+let editorCapeEquipment = 'cape';
 
 /* ================================================================
    THEME SYSTEM
@@ -239,13 +245,31 @@ async function api(url, opts = {}) {
   return data;
 }
 
+function showAppDialog(message,{title=t('dialog-title'),confirm=false,confirmText=t('dialog-confirm'),cancelText=t('dialog-cancel')}={}) {
+  return new Promise(resolve=>{
+    document.querySelector('.app-dialog-backdrop')?.remove();
+    const backdrop=document.createElement('div'); backdrop.className='app-dialog-backdrop';
+    const dialog=document.createElement('section'); dialog.className='app-dialog'; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true');
+    const heading=document.createElement('h2'); heading.textContent=title;
+    const text=document.createElement('p'); text.textContent=message;
+    const actions=document.createElement('div'); actions.className='app-dialog-actions';
+    const close=result=>{ backdrop.remove(); resolve(result); };
+    if(confirm) { const cancel=document.createElement('button'); cancel.className='secondary-btn'; cancel.textContent=cancelText; cancel.onclick=()=>close(false); actions.appendChild(cancel); }
+    const ok=document.createElement('button'); ok.className='primary-btn'; ok.dataset.confirm=confirm?'true':'false'; ok.textContent=confirm?confirmText:t('dialog-ok'); ok.onclick=()=>close(true); actions.appendChild(ok);
+    backdrop.addEventListener('click',e=>{ if(e.target===backdrop) close(false); });
+    dialog.append(heading,text,actions); backdrop.appendChild(dialog); document.body.appendChild(backdrop); ok.focus();
+  });
+}
+
 /* ================================================================
    DASHBOARD
    ================================================================ */
 async function loadDashboard() {
   try {
+    await loadCapeOptions();
     const skin = await api(`/api/skins/${state.playerUuid}`);
     state.activeSkin = skin.textureValue ? skin : null;
+    syncAppliedCape(skin.textureValue);
     const noSkin = document.getElementById('no-skin');
     const skinInfo = document.getElementById('skin-info');
     if (state.activeSkin) {
@@ -253,13 +277,130 @@ async function loadDashboard() {
       document.getElementById('info-model').textContent = 'Model: ' + (skin.modelType||'DEFAULT');
       document.getElementById('info-source').textContent = 'Source: ' + (skin.source||'unknown');
       initDashboardPreview(skin.textureValue, skin.modelType === 'SLIM');
+      applySelectedCapePreview();
     } else {
       noSkin.classList.remove('hidden'); skinInfo.classList.add('hidden');
       initDashboardPreview(null, false);
+      applySelectedCapePreview();
     }
     const history = await api(`/api/skins/${state.playerUuid}/all`);
     renderHistory(history);
   } catch (err) { console.error('Dashboard error:', err); }
+}
+
+function syncAppliedCape(textureValue) {
+  selectedCapeUuid=null;
+  hasAppliedCape=false;
+  document.querySelectorAll('#cape-options .cape-option.selected').forEach(option=>option.classList.remove('selected'));
+  const clearButton=document.getElementById('btn-cape-clear');
+  if(!textureValue) { if(clearButton) clearButton.disabled=true; return; }
+  try {
+    const textures=JSON.parse(atob(textureValue)).textures;
+    const appliedUrl=textures?.CAPE?.url;
+    hasAppliedCape=!!appliedUrl;
+    if(clearButton) clearButton.disabled=!hasAppliedCape;
+    if(!appliedUrl) return;
+    const index=availableCapes.findIndex(c=>(c.url?.cape||c.url||c.texture?.url||c.textureUrl||c.image||'')===appliedUrl);
+    if(index>=0) {
+      selectedCapeUuid=availableCapes[index].uuid||availableCapes[index].id||availableCapes[index].cape;
+      document.querySelectorAll('.cape-option').forEach((node,i)=>node.classList.toggle('selected',i===index));
+    }
+  } catch(e) { console.warn('Could not detect applied cape',e); }
+}
+
+async function loadCapeOptions() {
+  const container=document.getElementById('cape-options'); if(!container) return;
+  container.innerHTML=`<p class="muted">${escapeHtml(t('cape-loading'))}</p>`;
+  try {
+    const capeResponse=await api(`/api/skins/${state.playerUuid}/capes`);
+    canUploadPublicCape=!!capeResponse?.canUploadPublic;
+    availableCapes=Array.isArray(capeResponse)?capeResponse:capeResponse?.capes;
+    const publicWrap=document.getElementById('custom-cape-public-wrap');
+    if(publicWrap) publicWrap.classList.toggle('hidden',!canUploadPublicCape);
+    // The endpoint normally returns its `capes` array; also accept the raw
+    // MineSkin response so every returned entry is rendered if proxy format changes.
+    if(!Array.isArray(availableCapes)) availableCapes=Array.isArray(availableCapes?.capes)?availableCapes.capes:[];
+    container.innerHTML=availableCapes.map((cape,index)=>{
+      const uuid=cape.uuid||cape.id||cape.cape;
+      const name=cape.alias||cape.name||cape.title||`${t('cape-title')} ${index+1}`;
+      const rawUrl=cape.url?.cape||cape.url||cape.texture?.url||cape.textureUrl||cape.image;
+      const url=typeof rawUrl==='string'?rawUrl:null;
+      const isPrivate=cape.support==='private';
+      const supportKey=cape.custom?(isPrivate?'cape-support-private':'cape-support-public'):'cape-support-public';
+      const supportLabel=t(supportKey);
+      const remove=cape.custom&&cape.canDelete?`<button type="button" class="cape-delete" title="${escapeHtml(t('cape-delete'))}" aria-label="${escapeHtml(t('cape-delete'))}" onclick="event.stopPropagation();deleteCustomCape('${escapeHtml(uuid)}')">×</button>`:'';
+      return `<div role="button" tabindex="0" class="cape-option ${cape.custom?'custom-cape-card':''} ${selectedCapeUuid===uuid?'selected':''}" onclick="selectCapeOption('${escapeHtml(uuid||'')}',${index})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectCapeOption('${escapeHtml(uuid||'')}',${index})};}" title="${escapeHtml(name)}">${remove}${url?`<span class="cape-thumb"><img src="${escapeHtml(url)}" alt="${escapeHtml(tf('cape-texture-alt',{name}))}"></span>`:`<span class="cape-no-image">${escapeHtml(t('cape-no-preview'))}</span>`}<span class="cape-name">${escapeHtml(name)}</span><small class="cape-support ${isPrivate?'private':''}" data-translation-key="${supportKey}">${escapeHtml(supportLabel)}</small></div>`;
+    }).join('')||`<p class="muted">${escapeHtml(t('cape-none-available'))}</p>`;
+  } catch(e) { container.innerHTML=`<p class="muted">${escapeHtml(tf('cape-load-error',{error:e.message}))}</p><button type="button" class="secondary-btn" onclick="loadCapeOptions()">${escapeHtml(t('cape-retry'))}</button>`; }
+}
+
+async function uploadCustomCapeUrl() {
+  const input=document.getElementById('custom-cape-url');
+  const capeUrl=input?.value.trim();
+  const capeName=document.getElementById('custom-cape-name')?.value.trim();
+  if(!capeName) { await showAppDialog(t('cape-name-required')); return; }
+  if(!capeUrl) { await showAppDialog(t('cape-url-required')); return; }
+  try {
+    const result=await api(`/api/skins/${state.playerUuid}/capes/custom`,{method:'POST',body:JSON.stringify({capeUrl,capeName,public:canUploadPublicCape&&!!document.getElementById('custom-cape-public')?.checked})});
+    availableCapes=[result,...availableCapes];
+    selectedCapeUuid=result.uuid;
+    await loadCapeOptions();
+    const index=availableCapes.findIndex(c=>c.uuid===result.uuid);
+    selectCapeOption(result.uuid,index);
+    input.value=''; document.getElementById('custom-cape-name').value='';
+  } catch(e) { await showAppDialog(tf('cape-add-error',{error:e.message}),{title:t('cape-add-error-title')}); }
+}
+
+async function deleteCustomCape(uuid) {
+  const cape=availableCapes.find(item=>(item.uuid||item.id||item.cape)===uuid);
+  if(!cape?.custom) return;
+  const capeName=cape.alias||cape.name||t('cape-title');
+  const confirmed=await showAppDialog(t('cape-delete-confirm').replaceAll('%name%',capeName),{title:t('cape-delete-title'),confirm:true,confirmText:t('cape-delete'),cancelText:t('dialog-cancel')});
+  if(!confirmed) return;
+  try {
+    await api(`/api/skins/${state.playerUuid}/capes/custom/${encodeURIComponent(uuid)}`,{method:'DELETE'});
+    if(selectedCapeUuid===uuid) { selectedCapeUuid=null; applySelectedCapePreview(); }
+    await loadCapeOptions();
+  } catch(e) { await showAppDialog(tf('cape-delete-error',{error:e.message}),{title:t('cape-add-error-title')}); }
+}
+
+function selectCapeOption(uuid,index) {
+  if(!uuid) return;
+  selectedCapeUuid=uuid;
+  document.querySelectorAll('.cape-option').forEach((node,i)=>node.classList.toggle('selected',i===index));
+  const cape=availableCapes[index];
+  applySelectedCapePreview(index);
+}
+
+function applySelectedCapePreview(index=null) {
+  if(!skinViewer) return;
+  if(!selectedCapeUuid) { Promise.resolve(skinViewer.loadCape(null)).catch(()=>{}); return; }
+  const cape=availableCapes[index??availableCapes.findIndex(c=>(c.uuid||c.id||c.cape)===selectedCapeUuid)];
+  const rawUrl=cape?.url?.cape||cape?.url||cape?.texture?.url||cape?.textureUrl||cape?.image;
+  const url=typeof rawUrl==='string'?rawUrl:null;
+  if(url) {
+    Promise.resolve(skinViewer.loadCape(url,previewEquipment==='elytra'?{backEquipment:'elytra'}:{})).catch(e=>console.warn('Cape preview failed',e));
+  }
+}
+
+function toggleCapeEquipment() {
+  previewEquipment=previewEquipment==='cape'?'elytra':'cape';
+  const button=document.getElementById('preview-equipment-toggle');
+  if(button) button.textContent=previewEquipment==='elytra'?t('cape-show'):t('cape-show-elytra');
+  applySelectedCapePreview();
+}
+
+async function applyCape(clear) {
+  if(clear&&!hasAppliedCape) return;
+  if(!clear&&!selectedCapeUuid) { await showAppDialog(t('cape-select-required')); return; }
+  const buttons=[document.getElementById('btn-cape-apply'),document.getElementById('btn-cape-clear')];
+  buttons.forEach(b=>b.disabled=true);
+  try {
+    const cape=availableCapes.find(c=>(c.uuid||c.id||c.cape)===selectedCapeUuid);
+    await api(`/api/skins/${state.playerUuid}/cape/${clear?'clear':'apply'}`,{method:'POST',body:clear?undefined:JSON.stringify({capeUuid:selectedCapeUuid,capeUrl:cape?.url})});
+    await loadDashboard();
+  } catch(e) { await showAppDialog(tf('cape-apply-error',{error:e.message}),{title:t('cape-add-error-title')}); }
+  finally { buttons.forEach(b=>b.disabled=false); }
 }
 
 function renderHistory(skins) {
@@ -279,9 +420,9 @@ function renderHistory(skins) {
           <span class="muted">${new Date(s.createdAt*1000).toLocaleDateString()}</span>
         </div>
       </div>
-      ${s.active
+      <div class="history-actions">${s.active
         ? `<span class="active-badge">${t('active-badge')}</span>`
-        : `<button class="apply-btn" onclick="applySkin(${s.id})">${t('btn-apply')}</button>`}
+        : `<button class="apply-btn" onclick="applySkin(${s.id})">${t('btn-apply')}</button><button class="delete-btn" onclick="deleteSkin(${s.id})">${t('skin-delete-button')}</button>`}</div>
     </div>`;
   }).join('');
 }
@@ -317,7 +458,13 @@ function renderSkinThumbnail(canvasId, textureValue) {
 
 async function applySkin(skinId) {
   try { await api(`/api/skins/${state.playerUuid}/apply/${skinId}`, {method:'POST'}); loadDashboard(); }
-  catch (e) { alert('Failed: ' + e.message); }
+  catch (e) { await showAppDialog(tf('skin-apply-error',{error:e.message}),{title:t('skin-error-title')}); }
+}
+
+async function deleteSkin(skinId) {
+  if(!await showAppDialog(t('skin-delete-confirm'),{title:t('skin-delete-title'),confirm:true,confirmText:t('skin-delete-button')})) return;
+  try { await api(`/api/skins/${state.playerUuid}/delete/${skinId}`,{method:'DELETE'}); await loadDashboard(); }
+  catch(e) { await showAppDialog(tf('skin-delete-error',{error:e.message}),{title:t('skin-delete-error-title')}); }
 }
 
 /* ================================================================
@@ -829,11 +976,11 @@ async function loadCurrentSkinIntoEditor() {
     } catch {}
   }
   if (!state.activeSkin || !state.activeSkin.textureValue) {
-    alert('No active skin found. Import or set a skin first.');
+    await showAppDialog(t('skin-no-active'));
     return;
   }
   const url = skinUrlFromTexture(state.activeSkin.textureValue);
-  if (!url) { alert('Could not extract skin URL from texture data.'); return; }
+  if (!url) { await showAppDialog(t('skin-texture-unavailable')); return; }
   loadImageToDataCanvas(url, () => {
     state.editorHistory = []; state.editorHistoryIdx = -1;
     editorSaveState(); redrawDisplay(); updateEditorPreview3D();
@@ -941,8 +1088,8 @@ async function applyPreset(id) {
 }
 
 async function deletePreset(id) {
-  if (!confirm(t('presets-delete-confirm'))) return;
-  try { await api(`/api/presets/${id}`,{method:'DELETE'}); loadPresets(); } catch(e) { alert('Failed: '+e.message); }
+  if (!await showAppDialog(t('presets-delete-confirm'),{title:t('skin-delete-title'),confirm:true,confirmText:t('skin-delete-button')})) return;
+  try { await api(`/api/presets/${id}`,{method:'DELETE'}); loadPresets(); } catch(e) { await showAppDialog(tf('skin-delete-preset-error',{error:e.message}),{title:t('skin-delete-error-title')}); }
 }
 
 function toggleSavePreset() { document.getElementById('save-preset-form').classList.toggle('hidden'); }
@@ -1029,7 +1176,7 @@ const T = {
     'editor-signing':'Signing skin...',
     'editor-signing-msg':'Sending skin to MineSkin for signing... This may take a moment.',
     'editor-saved':'Skin saved and applied! Rejoin the server or wait for it to update.',
-    'editor-preview':'Preview',
+    'editor-preview':'Preview','editor-cape-title':'Cape Editor','editor-cape-description':'Draw a 64 × 32 cape texture and preview it on your character.','editor-cape-color':'Brush color','editor-cape-clear':'Clear cape','editor-cape-name':'Cape name','editor-cape-save':'Save cape','editor-cape-saved':'Cape saved to your cape collection.',
     'import-title':'Import Skin','tab-username':'From Username','tab-url':'From URL','tab-file':'Upload File',
     'import-username-ph':'Enter Minecraft username...','import-url-ph':'Paste skin image URL...',
     'import-search':'Search','import-apply':'Apply',
@@ -1045,6 +1192,15 @@ const T = {
     'presets-applied':'Preset applied!','presets-saved':'Preset saved!',
     'presets-no-active':'No active skin to save as preset.','presets-delete-confirm':'Delete this preset?',
     'explore-title':'Explore Skins','explore-desc':'Browse these popular websites to find amazing skins, then import them using the Import tab!',
+    'cape-title':'Cape','cape-description':'Choose a cape to preview it with your current skin.','cape-clear':'Clear','cape-apply':'Apply','cape-support-public':'Public','cape-support-private':'Private','cape-support-owner':'Owner only','cape-support-none':'Unsupported',
+    'cape-name-placeholder':'Cape name','cape-url-placeholder':'https://example.com/cape.png','cape-name-label':'Cape name','cape-url-label':'Cape image URL','cape-add-custom':'Add custom cape','cape-public-upload':'Public cape','cape-delete':'Delete cape','cape-delete-title':'Delete cape','cape-delete-confirm':'Delete “%name%”? This cape will be permanently removed.','cape-delete-error':'Cape could not be deleted: %error%',
+    'cape-loading':'Loading capes…','cape-none-available':'No capes available.','cape-load-error':'Could not load available capes: %error%','cape-retry':'Retry','cape-account-required':'Account required','cape-available':'Available','cape-texture-alt':'%name% cape texture','cape-support-public':'Public','cape-support-owner':'Owner only','cape-support-none':'Unsupported',
+    'cape-show':'Cape','cape-show-elytra':'Elytra','cape-no-preview':'No preview','cape-select-required':'Select a cape first.','cape-name-required':'Enter a name for your custom cape.','cape-url-required':'Enter a cape PNG URL.',
+    'cape-add-error-title':'Cape error','cape-add-error':'Custom cape could not be added: %error%','cape-apply-error':'Cape update failed: %error%',
+    'skin-error-title':'Skin error','skin-apply-error':'Failed: %error%','skin-delete-title':'Delete skin','skin-delete-confirm':'Delete this skin from history?','skin-delete-button':'Delete',
+    'skin-delete-error-title':'Delete error','skin-delete-error':'Could not delete skin: %error%','skin-delete-preset-error':'Failed: %error%','skin-no-active':'No active skin found. Import or set a skin first.','skin-texture-unavailable':'Could not extract skin URL from texture data.',
+    'dialog-title':'BetterSkin','dialog-ok':'OK','dialog-confirm':'Confirm','dialog-cancel':'Cancel',
+    'tool-pencil':'Pencil','tool-eraser':'Eraser','tool-fill':'Fill','tool-picker':'Pick Color','editor-load-steve':'Load Steve','editor-load-file':'Load PNG','editor-load-current':'Load My Skin',
   },
   'pt-PT': {
     'nav-dashboard':'Painel','nav-editor':'Editor','nav-import':'Importar','nav-presets':'Presets','nav-explore':'Explorar',
@@ -1056,7 +1212,7 @@ const T = {
     'editor-signing':'A assinar skin...',
     'editor-signing-msg':'A enviar skin para o MineSkin para assinar... Pode demorar um momento.',
     'editor-saved':'Skin guardada e aplicada! Volta a entrar no servidor ou espera pela atualização.',
-    'editor-preview':'Pré-visualização',
+    'editor-preview':'Pré-visualização','editor-cape-title':'Editor de capas','editor-cape-description':'Desenha uma textura de capa de 64 × 32 e pré-visualiza-a na personagem.','editor-cape-color':'Cor do pincel','editor-cape-clear':'Limpar capa','editor-cape-name':'Nome da capa','editor-cape-save':'Guardar capa','editor-cape-saved':'Capa guardada na tua coleção.',
     'import-title':'Importar Skin','tab-username':'Por Username','tab-url':'Por URL','tab-file':'Carregar Ficheiro',
     'import-username-ph':'Introduz o username do Minecraft...','import-url-ph':'Cola o URL da imagem da skin...',
     'import-search':'Procurar','import-apply':'Aplicar',
@@ -1072,11 +1228,40 @@ const T = {
     'presets-applied':'Preset aplicado!','presets-saved':'Preset guardado!',
     'presets-no-active':'Sem skin ativa para guardar como preset.','presets-delete-confirm':'Apagar este preset?',
     'explore-title':'Explorar Skins','explore-desc':'Explora estes sites populares para encontrar skins incríveis, depois importa-as usando a aba Importar!',
+    'cape-title':'Capa','cape-description':'Escolhe uma capa para pré-visualizar com a skin atual.','cape-clear':'Limpar','cape-apply':'Aplicar','cape-support-public':'Pública','cape-support-private':'Privada','cape-support-owner':'Apenas proprietário','cape-support-none':'Não suportada',
+    'cape-name-placeholder':'Nome da capa','cape-url-placeholder':'https://exemplo.com/capa.png','cape-name-label':'Nome da capa','cape-url-label':'URL da imagem da capa','cape-add-custom':'Adicionar capa personalizada','cape-public-upload':'Capa pública','cape-delete':'Eliminar capa','cape-delete-title':'Eliminar capa','cape-delete-confirm':'Eliminar “%name%”? Esta capa será removida permanentemente.','cape-delete-error':'Não foi possível eliminar a capa: %error%',
+    'cape-loading':'A carregar capas…','cape-none-available':'Não existem capas disponíveis.','cape-load-error':'Não foi possível carregar as capas: %error%','cape-retry':'Tentar novamente','cape-account-required':'Requer conta','cape-available':'Disponível','cape-texture-alt':'Textura da capa %name%','cape-support-public':'Pública','cape-support-owner':'Apenas proprietário','cape-support-none':'Não suportada',
+    'cape-show':'capa','cape-show-elytra':'élitros','cape-no-preview':'Sem pré-visualização','cape-select-required':'Seleciona primeiro uma capa.','cape-name-required':'Introduz um nome para a capa personalizada.','cape-url-required':'Introduz o URL de uma capa PNG.',
+    'cape-add-error-title':'Erro na capa','cape-add-error':'Não foi possível adicionar a capa: %error%','cape-apply-error':'Falha ao atualizar a capa: %error%',
+    'skin-error-title':'Erro na skin','skin-apply-error':'Falha: %error%','skin-delete-title':'Apagar skin','skin-delete-confirm':'Apagar esta skin do histórico?','skin-delete-button':'Apagar',
+    'skin-delete-error-title':'Erro ao apagar','skin-delete-error':'Não foi possível apagar a skin: %error%','skin-delete-preset-error':'Falha: %error%','skin-no-active':'Não há uma skin ativa. Importa ou define uma skin primeiro.','skin-texture-unavailable':'Não foi possível obter o URL da skin dos dados da textura.',
+    'dialog-title':'BetterSkin','dialog-ok':'OK','dialog-confirm':'Confirmar','dialog-cancel':'Cancelar',
+    'tool-pencil':'Lápis','tool-eraser':'Borracha','tool-fill':'Preencher','tool-picker':'Escolher cor','editor-load-steve':'Carregar Steve','editor-load-file':'Carregar PNG','editor-load-current':'Carregar a minha skin',
+  },
+  'zh-CN': {
+    'nav-dashboard':'主页','nav-editor':'皮肤编辑器','nav-import':'导入','nav-presets':'预设','nav-explore':'探索',
+    'dashboard-title':'当前皮肤','no-skin':'尚未设置自定义皮肤。请使用编辑器或导入皮肤。','btn-import':'导入','btn-editor':'编辑器','btn-presets':'预设',
+    'history-title':'皮肤历史','no-history':'暂无皮肤记录。','active-badge':'当前使用','btn-apply':'应用',
+    'editor-title':'皮肤编辑器','model-steve':'Steve（经典）','model-slim':'Alex（纤细）','btn-save':'保存并应用','editor-signing':'正在签名皮肤…',
+    'editor-signing-msg':'正在将皮肤发送至 MineSkin 签名，请稍候。','editor-saved':'皮肤已保存并应用！重新进入服务器或等待更新。','editor-preview':'预览','editor-cape-title':'披风编辑器','editor-cape-description':'绘制 64 × 32 的披风纹理，并在角色模型上预览。','editor-cape-color':'画笔颜色','editor-cape-clear':'清空披风','editor-cape-name':'披风名称','editor-cape-save':'保存披风','editor-cape-saved':'披风已保存到你的披风列表。',
+    'import-title':'导入皮肤','tab-username':'按用户名导入','tab-url':'从网址导入','tab-file':'上传文件','import-username-ph':'输入 Minecraft 用户名…','import-url-ph':'粘贴皮肤图片网址…',
+    'import-search':'搜索','import-apply':'应用','import-dropzone':'将 PNG 文件拖到此处，或点击选择文件','import-looking':'正在查询玩家并签名皮肤…','import-downloading':'正在下载并签名皮肤…','import-uploading':'正在上传并签名皮肤…','import-success':'皮肤已导入并应用！',
+    'presets-title':'皮肤预设','presets-save-btn':'将当前皮肤保存为预设','presets-name-ph':'预设名称…','presets-save':'保存','presets-cancel':'取消','presets-global':'服务器预设','presets-personal':'我的预设',
+    'presets-none':'暂无可用预设。','presets-none-personal':'你还没有预设。','presets-applied':'预设已应用！','presets-saved':'预设已保存！','presets-no-active':'没有可保存为预设的当前皮肤。','presets-delete-confirm':'确定删除此预设吗？',
+    'explore-title':'探索皮肤','explore-desc':'浏览这些热门网站寻找喜欢的皮肤，然后通过“导入”页面导入。',
+    'cape-title':'披风','cape-description':'选择披风，在当前皮肤模型上预览效果。','cape-clear':'清除','cape-apply':'应用','cape-support-public':'公开','cape-support-private':'私有','cape-support-owner':'仅所有者','cape-support-none':'不支持','cape-name-placeholder':'披风名称','cape-url-placeholder':'https://example.com/cape.png','cape-name-label':'披风名称','cape-url-label':'披风图片网址','cape-add-custom':'添加自定义披风','cape-public-upload':'公开披风','cape-delete':'删除披风','cape-delete-title':'删除披风','cape-delete-confirm':'确定删除“%name%”吗？此披风将被永久移除。','cape-delete-error':'删除披风失败：%error%',
+    'cape-loading':'正在加载披风…','cape-none-available':'暂无可用披风。','cape-load-error':'无法加载披风：%error%','cape-retry':'重试','cape-account-required':'需要账号','cape-available':'可用','cape-texture-alt':'%name% 披风纹理','cape-support-public':'公开','cape-support-owner':'仅所有者','cape-support-none':'不支持',
+    'cape-show':'披风','cape-show-elytra':'鞘翅','cape-no-preview':'无预览','cape-select-required':'请先选择一件披风。','cape-name-required':'请输入自定义披风名称。','cape-url-required':'请输入披风 PNG 图片网址。','cape-add-error-title':'披风错误','cape-add-error':'添加自定义披风失败：%error%','cape-apply-error':'更新披风失败：%error%',
+    'skin-error-title':'皮肤错误','skin-apply-error':'操作失败：%error%','skin-delete-title':'删除皮肤','skin-delete-confirm':'确定从历史记录中删除此皮肤吗？','skin-delete-button':'删除','skin-delete-error-title':'删除失败','skin-delete-error':'无法删除皮肤：%error%','skin-delete-preset-error':'操作失败：%error%','skin-no-active':'没有当前皮肤，请先导入或设置皮肤。','skin-texture-unavailable':'无法从纹理数据中提取皮肤网址。',
+    'dialog-title':'BetterSkin','dialog-ok':'确定','dialog-confirm':'确认','dialog-cancel':'取消',
+    'tool-pencil':'画笔','tool-eraser':'橡皮擦','tool-fill':'填充','tool-picker':'取色','editor-load-steve':'加载 Steve','editor-load-file':'加载 PNG','editor-load-current':'加载我的皮肤',
   }
 };
 let currentLocale = localStorage.getItem('ws_locale') || 'en';
+if(!T[currentLocale]) currentLocale='en';
 function t(k) { return (T[currentLocale]||T.en)[k] || T.en[k] || k; }
-function setLocale(l) { currentLocale=l; localStorage.setItem('ws_locale',l); applyTranslations(); }
+function tf(k,vars={}) { return Object.entries(vars).reduce((s,[name,value])=>s.replaceAll(`%${name}%`,value),t(k)); }
+function setLocale(l) { if(!T[l]) return; currentLocale=l; localStorage.setItem('ws_locale',l); applyTranslations(); }
 
 function applyTranslations() {
   // Nav
@@ -1089,6 +1274,23 @@ function applyTranslations() {
   const dh=document.querySelector('#page-dashboard .preview-section h2'); if(dh) dh.textContent=t('dashboard-title');
   const ns=document.getElementById('no-skin'); if(ns) ns.textContent=t('no-skin');
   const ht=document.querySelector('#page-dashboard .actions-section h3'); if(ht) ht.textContent=t('history-title');
+  document.querySelectorAll('#skin-history .history-actions .apply-btn').forEach(button=>button.textContent=t('btn-apply'));
+  document.querySelectorAll('#skin-history .history-actions .delete-btn').forEach(button=>button.textContent=t('skin-delete-button'));
+  document.querySelectorAll('#skin-history .history-actions .active-badge').forEach(badge=>badge.textContent=t('active-badge'));
+  const ct=document.querySelector('.cape-picker-title h3'); if(ct) ct.textContent=t('cape-title');
+  const cd=document.querySelector('.cape-picker-title .muted'); if(cd) cd.textContent=t('cape-description');
+  const cb=document.getElementById('btn-cape-clear'); if(cb) cb.textContent=t('cape-clear');
+  const ca=document.getElementById('btn-cape-apply'); if(ca&&!ca.disabled) ca.textContent=t('cape-apply');
+  const cn=document.getElementById('custom-cape-name'); if(cn) { cn.placeholder=t('cape-name-placeholder'); cn.setAttribute('aria-label',t('cape-name-label')); }
+  const cu=document.getElementById('custom-cape-url'); if(cu) { cu.placeholder=t('cape-url-placeholder'); cu.setAttribute('aria-label',t('cape-url-label')); }
+  const addCape=document.querySelector('#custom-cape-form button'); if(addCape) addCape.textContent=t('cape-add-custom');
+  const equipment=document.getElementById('preview-equipment-toggle'); if(equipment) equipment.textContent=previewEquipment==='elytra'?t('cape-show'):t('cape-show-elytra');
+  const dialog=document.querySelector('.app-dialog'); if(dialog) { const ok=dialog.querySelector('.app-dialog-actions .primary-btn'); if(ok) ok.textContent=ok.dataset.confirm==='true'?t('dialog-confirm'):t('dialog-ok'); const cancel=dialog.querySelector('.app-dialog-actions .secondary-btn'); if(cancel) cancel.textContent=t('dialog-cancel'); }
+  document.querySelectorAll('.cape-option').forEach(button=>{
+    const badge=button.querySelector('.cape-support');
+    if(badge&&badge.dataset.translationKey) badge.textContent=t(badge.dataset.translationKey);
+  });
+  const publicLabel=document.querySelector('#custom-cape-public-wrap span'); if(publicLabel) publicLabel.textContent=t('cape-public-upload');
   document.querySelectorAll('.quick-actions .action-btn').forEach(b=>{
     if(b.dataset.page==='import') b.textContent=t('btn-import');
     if(b.dataset.page==='editor') b.textContent=t('btn-editor');
@@ -1098,6 +1300,33 @@ function applyTranslations() {
   const et=document.querySelector('#page-editor > h1'); if(et) et.textContent=t('editor-title');
   const sb=document.getElementById('btn-save-skin'); if(sb&&!sb.disabled) sb.textContent=t('btn-save');
   const ep=document.querySelector('.editor-preview h3'); if(ep) ep.textContent=t('editor-preview');
+  const capeEditorTitle=document.getElementById('editor-cape-title'); if(capeEditorTitle) capeEditorTitle.textContent=t('editor-cape-title');
+  const capeEditorDescription=document.getElementById('editor-cape-description'); if(capeEditorDescription) capeEditorDescription.textContent=t('editor-cape-description');
+  const capeColorLabel=document.getElementById('editor-cape-color-label'); if(capeColorLabel) capeColorLabel.textContent=t('editor-cape-color');
+  const capeClear=document.getElementById('btn-editor-cape-clear'); if(capeClear) capeClear.textContent=t('editor-cape-clear');
+  const capeName=document.getElementById('editor-cape-name'); if(capeName) capeName.placeholder=t('editor-cape-name');
+  const capeSave=document.getElementById('btn-editor-cape-save'); if(capeSave&&!capeSave.disabled) capeSave.textContent=t('editor-cape-save');
+  const capeEquipment=document.getElementById('editor-cape-equipment-toggle'); if(capeEquipment) capeEquipment.textContent=editorCapeEquipment==='elytra'?t('cape-show'):t('cape-show-elytra');
+  const editorLoads=['btn-load-steve','btn-load-file','btn-load-current'];
+  ['editor-load-steve','editor-load-file','editor-load-current'].forEach((key,i)=>{ const button=document.getElementById(editorLoads[i]); if(button) button.textContent=t(key); });
+  const setLabelText=(selector,value)=>{ const label=document.querySelector(selector); if(label&&label.lastChild) label.lastChild.textContent=' '+value; };
+  setLabelText('.editor-model-select label:first-child',t('model-steve'));
+  setLabelText('.editor-model-select label:last-child',t('model-slim'));
+  setLabelText('.import-model-select label:first-child',t('model-steve'));
+  setLabelText('.import-model-select label:last-child',t('model-slim'));
+  ['pencil','eraser','fill','picker'].forEach((tool,i)=>{ const key=['tool-pencil','tool-eraser','tool-fill','tool-picker'][i]; const button=document.querySelector(`.tool-btn[data-tool="${tool}"]`); if(button) button.title=t(key); });
+  const importTitle=document.querySelector('#page-import > h1'); if(importTitle) importTitle.textContent=t('import-title');
+  document.querySelectorAll('.import-tabs [data-tab]').forEach(button=>button.textContent=t(`tab-${button.dataset.tab}`));
+  const username=document.getElementById('import-username'); if(username) username.placeholder=t('import-username-ph');
+  const importUrl=document.getElementById('import-url'); if(importUrl) importUrl.placeholder=t('import-url-ph');
+  const usernameSearch=document.querySelector('#tab-username .primary-btn'); if(usernameSearch) usernameSearch.textContent=t('import-search');
+  const urlApply=document.querySelector('#tab-url .primary-btn'); if(urlApply) urlApply.textContent=t('import-apply');
+  const dropzone=document.querySelector('#tab-file .dropzone p'); if(dropzone) dropzone.textContent=t('import-dropzone');
+  const presetTitle=document.querySelector('#page-presets > h1'); if(presetTitle) presetTitle.textContent=t('presets-title');
+  const savePreset=document.getElementById('btn-show-save-preset'); if(savePreset) savePreset.textContent=t('presets-save-btn');
+  const presetName=document.getElementById('preset-name'); if(presetName) presetName.placeholder=t('presets-name-ph');
+  const presetForm=document.querySelector('#save-preset-form'); if(presetForm) { const buttons=presetForm.querySelectorAll('button'); if(buttons[0]) buttons[0].textContent=t('presets-save'); if(buttons[1]) buttons[1].textContent=t('presets-cancel'); }
+  const presetHeadings=document.querySelectorAll('#page-presets > h2'); if(presetHeadings[0]) presetHeadings[0].textContent=t('presets-global'); if(presetHeadings[1]) presetHeadings[1].textContent=t('presets-personal');
   // Explore
   const ext=document.querySelector('#page-explore > h1'); if(ext) ext.textContent=t('explore-title');
   const exd=document.querySelector('#page-explore > p.muted'); if(exd) exd.textContent=t('explore-desc');

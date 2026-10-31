@@ -17,6 +17,7 @@ public class ConfigManager {
     // MineSkin
     private String mineskinApiKey;
     private String mineskinApiUrl;
+    private boolean selfSigning;
 
     // Token
     private int tokenExpirySeconds;
@@ -52,6 +53,7 @@ public class ConfigManager {
 
         mineskinApiKey = cfg.getString("mineskin.api-key", "");
         mineskinApiUrl = cfg.getString("mineskin.api-url", "https://api.mineskin.org");
+        selfSigning = cfg.getBoolean("self-signing", true);
 
         tokenExpirySeconds = cfg.getInt("token.expiry-seconds", 300);
         tokenBindIp = cfg.getBoolean("token.bind-ip", false);
@@ -73,6 +75,7 @@ public class ConfigManager {
     public String getPublicUrl()        { return publicUrl; }
     public String getMineskinApiKey()   { return mineskinApiKey; }
     public String getMineskinApiUrl()   { return mineskinApiUrl; }
+    public boolean isSelfSigning()       { return selfSigning; }
     public int getTokenExpirySeconds()  { return tokenExpirySeconds; }
     public boolean isTokenBindIp()      { return tokenBindIp; }
     public String getJoinSendLinkMode() { return joinSendLinkMode; }

@@ -21,6 +21,7 @@
       <div class="nav-right">
         <button class="lang-btn" onclick="setLocale('en')">EN</button>
         <button class="lang-btn" onclick="setLocale('pt-PT')">PT</button>
+        <button class="lang-btn" onclick="setLocale('zh-CN')">简中</button>
         <span id="username-display" class="username"></span>
       </div>
     </nav>
@@ -42,6 +43,7 @@
           <h2>Current Skin</h2>
           <div id="skin-preview-container">
             <canvas id="skin-preview-canvas" width="280" height="380"></canvas>
+            <button id="preview-equipment-toggle" class="preview-equipment-toggle" onclick="toggleCapeEquipment()">Elytra</button>
           </div>
           <div id="skin-info" class="skin-info hidden">
             <span id="info-model"></span>
@@ -61,6 +63,25 @@
           </div>
         </div>
       </div>
+      <section class="cape-picker">
+        <div class="cape-picker-title">
+          <div>
+            <h3>Cape</h3>
+            <p class="muted">Choose a cape to preview it with your current skin.</p>
+          </div>
+          <div class="cape-actions">
+            <button class="secondary-btn" id="btn-cape-clear" onclick="applyCape(true)">Clear</button>
+            <button class="primary-btn" id="btn-cape-apply" onclick="applyCape(false)">Apply</button>
+          </div>
+        </div>
+        <form id="custom-cape-form" class="custom-cape-form" onsubmit="event.preventDefault();uploadCustomCapeUrl()">
+          <input id="custom-cape-name" type="text" maxlength="40" placeholder="Cape name" aria-label="Cape name">
+          <input id="custom-cape-url" type="url" placeholder="https://example.com/cape.png" aria-label="Cape image URL">
+          <label id="custom-cape-public-wrap" class="cape-public-option hidden"><input id="custom-cape-public" type="checkbox"><span>Public cape</span></label>
+          <button type="submit" class="primary-btn">Add custom cape</button>
+        </form>
+        <div id="cape-options" class="cape-options"><p class="muted">Loading capes…</p></div>
+      </section>
     </div>
 
     <!-- Editor Page -->

@@ -66,6 +66,8 @@ public class WebServer {
 
             server.createContext("/api/auth", authHandler::handle);
             server.createContext("/api/skins", skinHandler::handle);
+            server.createContext("/api/capes/custom", new CapeTextureHandler(plugin)::handle);
+            server.createContext("/api/textures/skins", new SkinTextureHandler(plugin)::handle);
             server.createContext("/api/import", importHandler::handle);
             server.createContext("/api/presets", presetHandler::handle);
             server.createContext("/api/health", this::handleHealth);
@@ -130,7 +132,7 @@ public class WebServer {
                 String contentType = MIME_TYPES.getOrDefault(ext, "application/octet-stream");
 
                 exchange.getResponseHeaders().set("Content-Type", contentType);
-                exchange.getResponseHeaders().set("Cache-Control", ext.equals("html") ? "no-cache" : "max-age=3600");
+                exchange.getResponseHeaders().set("Cache-Control", (ext.equals("html") || ext.equals("js") || ext.equals("css")) ? "no-cache" : "max-age=3600");
                 // The login link carries the token in the query string. Send no Referer so
                 // the token is not leaked to third-party origins (e.g. the skinview3d CDN).
                 exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
@@ -226,7 +228,9 @@ public class WebServer {
      * block and simply stop (the response is committed, so nothing further should be written).
      */
     public static final class BodyTooLargeException extends IOException {
-        public BodyTooLargeException() { super("Request body too large"); }
+        public BodyTooLargeException() {
+            super("Request body too large");
+        }
     }
 
     /**

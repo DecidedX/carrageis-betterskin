@@ -165,13 +165,58 @@ nav {
 .action-btn:hover { background: var(--overlay); }
 
 /* History list */
-.history-list { display: flex; flex-direction: column; gap: 8px; }
+.history-list { display: flex; flex-direction: column; gap: 8px; max-height: min(440px, 60vh); overflow-y: auto; overscroll-behavior: contain; padding: 2px 8px 2px 2px; scrollbar-gutter: stable; }
+.history-list { scrollbar-width: thin; scrollbar-color: var(--green) var(--surface2); }
+.history-list::-webkit-scrollbar { width: 10px; }
+.history-list::-webkit-scrollbar-track { background: var(--surface2); border: 2px solid var(--bg); }
+.history-list::-webkit-scrollbar-thumb { background: var(--green); border: 2px solid var(--surface2); border-radius: 8px; }
+.history-list::-webkit-scrollbar-thumb:hover { background: var(--green-deep, var(--green)); }
 .history-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 16px; background: var(--surface); border-radius: var(--radius);
   border: 1px solid var(--surface2);
 }
 .history-item.active-skin { border-color: var(--blue); }
+.cape-picker { margin-top: 28px; padding-top: 22px; border-top: 2px solid var(--surface2); }
+.cape-picker-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.cape-picker-title h3 { margin:0; }
+.cape-actions { display:flex; gap:8px; }
+.cape-actions button:disabled { opacity:.55; cursor:wait; }
+.cape-options { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:12px; padding:12px 2px; }
+.cape-option { position:relative; min-width:0; min-height:132px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:10px; color:var(--text); background:var(--surface); border:2px solid var(--surface2); cursor:pointer; }
+.cape-delete { position:absolute; z-index:1; top:5px; right:5px; width:25px; height:25px; display:grid; place-items:center; padding:0; color:#fff; background:#c93636; border:0; border-radius:50%; font-size:20px; line-height:1; opacity:0; cursor:pointer; transition:opacity .15s ease,background .15s ease; }
+.custom-cape-card:hover .cape-delete,.custom-cape-card:focus-within .cape-delete { opacity:1; }
+.cape-delete:hover { background:#ed4141; }
+@media (hover:none) { .custom-cape-card .cape-delete { opacity:1; } }
+.cape-public-option { display:flex; align-items:center; justify-content:space-between; gap:14px; flex:0 0 auto; min-height:42px; padding:0 12px; color:var(--text); background:var(--surface); border:2px solid var(--surface2); white-space:nowrap; font-size:13px; cursor:pointer; transition:border-color .15s ease; }
+.cape-public-option:hover { border-color:var(--green); }
+.cape-public-option input { appearance:none; position:relative; width:36px; height:20px; flex:0 0 36px; margin:0; background:var(--surface2); border:1px solid var(--subtext); border-radius:999px; cursor:pointer; transition:background .15s ease,border-color .15s ease; }
+.cape-public-option input::before { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; background:var(--text); border-radius:50%; transition:transform .15s ease; }
+.cape-public-option input:checked { background:var(--green); border-color:var(--green); }
+.cape-public-option input:checked::before { background:var(--bg); transform:translateX(16px); }
+.cape-public-option input:focus-visible { outline:2px solid var(--green); outline-offset:3px; }
+.cape-thumb { position:relative; display:block; width:40px; height:64px; flex:0 0 64px; overflow:hidden; background-color:var(--surface2); background-image:linear-gradient(45deg,#7773 25%,transparent 25%),linear-gradient(-45deg,#7773 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#7773 75%),linear-gradient(-45deg,transparent 75%,#7773 75%); background-size:8px 8px; background-position:0 0,0 4px,4px -4px,-4px 0; }
+.cape-thumb img { position:absolute; left:-4px; top:-4px; width:256px; height:128px; max-width:none; object-fit:fill; image-rendering:pixelated; }
+.cape-option .cape-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.custom-cape-option { justify-content:flex-start; }
+.custom-cape-option input { width:100%; min-width:0; padding:8px; color:var(--text); background:var(--bg); border:1px solid var(--surface2); }
+.custom-cape-option .primary-btn { width:100%; padding:7px; font-size:12px; }
+.cape-option .cape-no-image { height:64px; display:grid; place-items:center; color:var(--subtext); font-size:11px; }
+.cape-option.selected { border-color:var(--green); box-shadow:0 0 0 2px color-mix(in srgb,var(--green) 35%,transparent); }
+.cape-option small { font-size:10px; color:var(--green); text-transform:capitalize; }
+.cape-option small.private { color:var(--subtext); }
+.custom-cape-form { display:flex; align-items:center; gap:10px; margin:14px 0 6px; }
+.custom-cape-form input { min-width:0; flex:1; padding:10px 12px; color:var(--text); background:var(--surface); border:2px solid var(--surface2); }
+.custom-cape-form button { flex:0 0 auto; }
+@media (max-width:600px) { .custom-cape-form { align-items:stretch; flex-direction:column; } .custom-cape-form input,.custom-cape-form button { width:100%; } }
+#skin-preview-container { position:relative; }
+.preview-equipment-toggle { position:absolute; right:10px; bottom:10px; z-index:2; padding:7px 10px; color:var(--text); background:var(--surface); border:2px solid var(--surface2); cursor:pointer; }
+.preview-equipment-toggle:hover { border-color:var(--green); }
+.app-dialog-backdrop { position:fixed; inset:0; z-index:10000; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.68); }
+.app-dialog { width:min(420px,100%); padding:22px; color:var(--text); background:var(--surface); border:3px solid var(--surface2); box-shadow:0 12px 40px rgba(0,0,0,.45); }
+.app-dialog h2 { margin:0 0 12px; }
+.app-dialog p { margin:0; color:var(--subtext); white-space:pre-wrap; overflow-wrap:anywhere; }
+.app-dialog-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:22px; }
 .history-left { display: flex; align-items: center; gap: 12px; }
 .history-thumb {
   width: 40px; height: 40px; border-radius: 4px; image-rendering: pixelated;

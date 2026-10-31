@@ -11,7 +11,7 @@ import pt.henrique.webskins.listener.PlayerQuitListener;
 import pt.henrique.webskins.skin.SkinApplier;
 import pt.henrique.webskins.skin.SkinCache;
 import pt.henrique.webskins.web.WebServer;
-import pt.henrique.webskins.web.service.MineSkinService;
+import pt.henrique.webskins.web.service.SignAdapter;
 
 import java.util.Objects;
 
@@ -33,7 +33,7 @@ public final class WebSkins extends JavaPlugin {
     private TokenManager tokenManager;
     private SkinCache skinCache;
     private SkinApplier skinApplier;
-    private MineSkinService mineSkinService;
+    private SignAdapter signAdapter;
     private WebServer webServer;
 
     @Override
@@ -42,6 +42,7 @@ public final class WebSkins extends JavaPlugin {
         saveDefaultConfig();
         saveResource("lang/en_US.yml", false);
         saveResource("lang/pt_PT.yml", false);
+        saveResource("lang/zh_CN.yml", false);
 
         // Initialize config
         configManager = new ConfigManager(this);
@@ -62,7 +63,7 @@ public final class WebSkins extends JavaPlugin {
         tokenManager = new TokenManager(this);
         skinCache = new SkinCache(configManager.getCacheTtlSeconds());
         skinApplier = new SkinApplier(this);
-        mineSkinService = new MineSkinService(this);
+        signAdapter = new SignAdapter(this);
 
         // Register command
         SkinCommand skinCommand = new SkinCommand(this);
@@ -90,7 +91,7 @@ public final class WebSkins extends JavaPlugin {
         }, 20 * 60 * 10, 20 * 60 * 10); // Every 10 minutes
 
         // Warn if MineSkin API key is not set
-        if (configManager.getMineskinApiKey() == null || configManager.getMineskinApiKey().isBlank()) {
+        if (!configManager.isSelfSigning() && configManager.getMineskinApiKey() == null || configManager.getMineskinApiKey().isBlank()) {
             getLogger().warning("========================================");
             getLogger().warning("  MineSkin API key is NOT configured!");
             getLogger().warning("  Custom skins will NOT work until you");
@@ -118,6 +119,6 @@ public final class WebSkins extends JavaPlugin {
     public TokenManager getTokenManager()       { return tokenManager; }
     public SkinCache getSkinCache()             { return skinCache; }
     public SkinApplier getSkinApplier()         { return skinApplier; }
-    public MineSkinService getMineSkinService() { return mineSkinService; }
+    public SignAdapter getSignAdapter() { return signAdapter; }
 }
 

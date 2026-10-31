@@ -318,6 +318,12 @@ public class Database {
         return true;
     }
 
+    /** Delete an inactive skin owned by this player when no preset references it. */
+    public synchronized boolean deleteSkin(String playerUuid, int skinId) throws SQLException {
+        String sql="DELETE FROM skins WHERE id=? AND player_uuid=? AND active=0 AND NOT EXISTS (SELECT 1 FROM presets WHERE presets.skin_id=skins.id)";
+        try(PreparedStatement ps=conn().prepareStatement(sql)) { ps.setInt(1,skinId); ps.setString(2,playerUuid); return ps.executeUpdate()>0; }
+    }
+
     /**
      * Check whether a skin id exists AND belongs to the given player.
      * Used to stop a player from referencing another player's skin id (e.g. when

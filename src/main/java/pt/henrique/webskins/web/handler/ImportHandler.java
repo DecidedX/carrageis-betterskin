@@ -110,7 +110,7 @@ public class ImportHandler {
 
         // Fallback: if no signature, sign via MineSkin from the skin URL
         if (skinUrl != null && !skinUrl.isBlank()) {
-            String[] signed = plugin.getMineSkinService().signFromUrl(skinUrl, model.equals("slim") ? "slim" : "classic");
+            String[] signed = plugin.getSignAdapter().signFromUrl(skinUrl, model.equals("slim") ? "slim" : "classic");
             if (signed == null) {
                 WebServer.sendJson(exchange, 503, "{\"error\":\"Skin signing service unavailable.\"}");
                 return;
@@ -160,7 +160,7 @@ public class ImportHandler {
 
         // Normalize and sign
         String normalized = ImageValidator.normalizeToBase64(imageBytes);
-        String[] signed = plugin.getMineSkinService().signFromBase64(normalized, model.equals("slim") ? "slim" : "classic");
+        String[] signed = plugin.getSignAdapter().signFromBase64(normalized, model.equals("slim") ? "slim" : "classic");
         if (signed == null) {
             WebServer.sendJson(exchange, 503, "{\"error\":\"Skin signing service unavailable.\"}");
             return;

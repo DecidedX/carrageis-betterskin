@@ -1,0 +1,30 @@
+# BetterSkin - English (en_US)
+prefix: "&8[&bBetterSkin&8] &r"
+
+skin-link: "&a点击这里打开链接管理你的皮肤: &n%link%"
+skin-link-hover: "&7点击打开皮肤管理"
+
+skin-status: "&7当前皮肤: &f%skin_name%"
+skin-status-none: "&7你没有设定皮肤"
+
+skin-applied: "&a皮肤设定成功!"
+skin-apply-failed: "&c皮肤设定失败，使用已缓存的皮肤"
+skin-apply-no-skin: "&7没有自定义皮肤. 输入 &a/skin &7去添加!"
+
+token-generated: "&a已为你生成新的皮肤管理链接"
+token-error: "&c生成皮肤管理链接失败，请稍后重试"
+
+reload-success: "&已重新载入"
+reload-no-permission: "&c没有权限"
+
+cooldown: "&c请等待生成新的链接"
+
+join-message: "&7自定义你的皮肤! &a点击这里 &7打开皮肤管理"
+
+status-header: "&8&m                    &r &b皮肤信息 &8&m                    "
+status-player: "&7玩家: &f%player%"
+status-skin: "&7皮肤: &f%skin_name%"
+status-model: "&7模型: &f%model%"
+status-source: "&7来源: &f%source%"
+status-updated: "&7上次更新: &f%date%"
+status-footer: "&8&m                                                        "

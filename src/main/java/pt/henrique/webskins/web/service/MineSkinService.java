@@ -2,6 +2,8 @@ package pt.henrique.webskins.web.service;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import pt.henrique.webskins.WebSkins;
 
 import java.net.URI;
@@ -20,6 +22,7 @@ public class MineSkinService {
     private final WebSkins plugin;
     private final Logger log;
     private final HttpClient httpClient;
+    private JsonArray cachedAvailableCapes;
 
     public MineSkinService(WebSkins plugin) {
         this.plugin = plugin;
@@ -132,6 +135,73 @@ public class MineSkinService {
             }
 
             return parseMineSkinResponse(response.body());
+        } catch (Exception e) {
+            log.warning("MineSkin signing failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Fetch MineSkin's supported cape catalog. Each row is {uuid,name,url}.
+     */
+    public JsonArray getAvailableCapes() {
+        if (cachedAvailableCapes != null) {
+            return cachedAvailableCapes;
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(plugin.getConfigManager().getMineskinApiUrl() + "/v2/capes"))
+                    .header("User-Agent", "BetterSkin/1.0").GET().timeout(Duration.ofSeconds(20)).build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warning("MineSkin cape catalog error (" + response.statusCode() + ")");
+                return new JsonArray();
+            }
+            JsonElement parsed = JsonParser.parseString(response.body());
+            if (parsed.isJsonArray()) {
+                cachedAvailableCapes = parsed.getAsJsonArray();
+                return cachedAvailableCapes;
+            }
+            JsonObject object = parsed.getAsJsonObject();
+            for (String key : new String[]{"capes", "data", "results"})
+                if (object.has(key) && object.get(key).isJsonArray()) {
+                    cachedAvailableCapes = object.getAsJsonArray(key);
+                    return cachedAvailableCapes;
+                }
+        } catch (Exception e) {
+            log.warning("Could not fetch MineSkin capes: " + e.getMessage());
+        }
+        return new JsonArray();
+    }
+
+    /**
+     * Generate one signed texture property containing skin and optional supported cape UUID.
+     */
+    public String[] signCape(String imageUrl, String variant, String capeUuid) {
+        String apiKey = plugin.getConfigManager().getMineskinApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warning("MineSkin API key not configured!");
+            return null;
+        }
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("url", "data:image/png;base64," + imageUrl);
+            body.addProperty("variant", variant.equals("slim") ? "slim" : "classic");
+            if (capeUuid != null && !capeUuid.isBlank()) body.addProperty("cape", capeUuid);
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(plugin.getConfigManager().getMineskinApiUrl() + "/v2/generate"))
+                    .header("Content-Type", "application/json").header("Authorization", "Bearer " + apiKey)
+                    .header("User-Agent", "BetterSkin/1.0").POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                    .timeout(Duration.ofSeconds(60)).build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 429) {
+                log.warning("MineSkin rate limited!");
+                return null;
+            }
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warning("MineSkin error (" + response.statusCode() + "): " + response.body());
+                return null;
+            }
+            JsonObject texture = JsonParser.parseString(response.body()).getAsJsonObject().getAsJsonObject("skin").getAsJsonObject("texture").getAsJsonObject("data");
+            return new String[]{texture.get("value").getAsString(), texture.get("signature").getAsString()};
         } catch (Exception e) {
             log.warning("MineSkin signing failed: " + e.getMessage());
             return null;

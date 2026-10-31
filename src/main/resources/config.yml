@@ -38,6 +38,11 @@ server:
   #
   public-url: "http://localhost:4567"
 
+# Use self signature for Skin and cape texture
+# You NEED install fabric client mod 'SkipSkinVerify' if you enter 'true'
+# Download SkipSkinVerify here: https://github.com/DecidedX/SkipSkinVerify/releases
+self-signing: true
+
 # ---- MineSkin API ----
 # MineSkin is a free service that "signs" your skin so Minecraft accepts it.
 # You NEED an API key for skins to work.
@@ -89,5 +94,6 @@ skin:
 # ---- Language ----
 # pt_PT = Português (default)
 # en_US = English
+# zh_CN = Simplified Chinese
 locale: "pt_PT"
 
