@@ -135,17 +135,22 @@ public class SkinHandler {
 
     private void handleGetCapes(HttpExchange exchange, String playerUuid) throws IOException {
         JsonArray result = new JsonArray();
-        java.io.File dir = new java.io.File(plugin.getDataFolder(), "textures/capes");
-        java.io.File[] files = dir.listFiles((d, n) -> n.startsWith("custom-") && n.endsWith(".png"));
-        if (files != null) for (java.io.File file : files) {
-            String capeId = file.getName().substring(0, file.getName().length() - 4);
-            JsonObject cape = readCustomCape(capeId, playerUuid, isAdmin(playerUuid));
-            if (cape != null) result.add(cape);
+        boolean selfSigning = plugin.getConfigManager().isSelfSigning();
+        if (selfSigning) {
+            java.io.File dir = new java.io.File(plugin.getDataFolder(), "textures/capes");
+            java.io.File[] files = dir.listFiles((d, n) -> n.startsWith("custom-") && n.endsWith(".png"));
+            if (files != null) for (java.io.File file : files) {
+                String capeId = file.getName().substring(0, file.getName().length() - 4);
+                JsonObject cape = readCustomCape(capeId, playerUuid, isAdmin(playerUuid));
+                if (cape != null) result.add(cape);
+            }
         }
         for (com.google.gson.JsonElement item : plugin.getSignAdapter().getAvailableCapes()) result.add(item);
         JsonObject response = new JsonObject();
         response.add("capes", result);
-        response.addProperty("canUploadPublic", isAdmin(playerUuid));
+        response.addProperty("selfSigning", selfSigning);
+        response.addProperty("canUploadCustom", selfSigning);
+        response.addProperty("canUploadPublic", selfSigning && isAdmin(playerUuid));
         WebServer.sendJson(exchange, 200, response.toString());
     }
 
@@ -172,6 +177,10 @@ public class SkinHandler {
     }
 
     private void handleCustomCapeUpload(HttpExchange exchange, String playerUuid) throws Exception {
+        if (!plugin.getConfigManager().isSelfSigning()) {
+            WebServer.sendJson(exchange, 403, "{\"error\":\"Custom capes require self-signing to be enabled.\"}");
+            return;
+        }
         JsonObject request = JsonParser.parseString(WebServer.readBody(exchange)).getAsJsonObject();
         String imageUrl = request.has("capeUrl") ? request.get("capeUrl").getAsString().trim() : "";
         String capeName = request.has("capeName") ? request.get("capeName").getAsString().trim() : "";

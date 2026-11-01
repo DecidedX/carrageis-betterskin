@@ -203,6 +203,7 @@ nav {
 .custom-cape-option .primary-btn { width:100%; padding:7px; font-size:12px; }
 .cape-option .cape-no-image { height:64px; display:grid; place-items:center; color:var(--subtext); font-size:11px; }
 .cape-option.selected { border-color:var(--green); box-shadow:0 0 0 2px color-mix(in srgb,var(--green) 35%,transparent); }
+.cape-option.unavailable { opacity:.45; filter:grayscale(.8); cursor:not-allowed; }
 .cape-option small { font-size:10px; color:var(--green); text-transform:capitalize; }
 .cape-option small.private { color:var(--subtext); }
 .custom-cape-form { display:flex; align-items:center; gap:10px; margin:14px 0 6px; }

@@ -96,6 +96,8 @@ let state = {
 let skinViewer = null;
 let availableCapes = [];
 let canUploadPublicCape = false;
+let canUploadCustomCape = true;
+let selfSigningEnabled = true;
 let selectedCapeUuid = null;
 let hasAppliedCape = false;
 let previewEquipment = 'cape';
@@ -313,10 +315,14 @@ async function loadCapeOptions() {
   container.innerHTML=`<p class="muted">${escapeHtml(t('cape-loading'))}</p>`;
   try {
     const capeResponse=await api(`/api/skins/${state.playerUuid}/capes`);
+    selfSigningEnabled=capeResponse?.selfSigning!==false;
+    canUploadCustomCape=capeResponse?.canUploadCustom!==false&&selfSigningEnabled;
     canUploadPublicCape=!!capeResponse?.canUploadPublic;
     availableCapes=Array.isArray(capeResponse)?capeResponse:capeResponse?.capes;
     const publicWrap=document.getElementById('custom-cape-public-wrap');
     if(publicWrap) publicWrap.classList.toggle('hidden',!canUploadPublicCape);
+    const uploadForm=document.getElementById('custom-cape-form');
+    if(uploadForm) uploadForm.classList.toggle('hidden',!canUploadCustomCape);
     // The endpoint normally returns its `capes` array; also accept the raw
     // MineSkin response so every returned entry is rendered if proxy format changes.
     if(!Array.isArray(availableCapes)) availableCapes=Array.isArray(availableCapes?.capes)?availableCapes.capes:[];
@@ -327,14 +333,18 @@ async function loadCapeOptions() {
       const url=typeof rawUrl==='string'?rawUrl:null;
       const isPrivate=cape.support==='private';
       const supportKey=cape.custom?(isPrivate?'cape-support-private':'cape-support-public'):'cape-support-public';
-      const supportLabel=t(supportKey);
+      const rawSupport=cape.support==null?'':String(cape.support);
+      const supportLabel=selfSigningEnabled?t(supportKey):(rawSupport||t(cape.supported===false?'cape-account-required':'cape-available'));
+      const support=String(cape.support??'').toLowerCase();
+      const selectable=cape.custom||selfSigningEnabled||(cape.supported!==false&&!['none','unsupported','false','unavailable'].includes(support));
       const remove=cape.custom&&cape.canDelete?`<button type="button" class="cape-delete" title="${escapeHtml(t('cape-delete'))}" aria-label="${escapeHtml(t('cape-delete'))}" onclick="event.stopPropagation();deleteCustomCape('${escapeHtml(uuid)}')">×</button>`:'';
-      return `<div role="button" tabindex="0" class="cape-option ${cape.custom?'custom-cape-card':''} ${selectedCapeUuid===uuid?'selected':''}" onclick="selectCapeOption('${escapeHtml(uuid||'')}',${index})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectCapeOption('${escapeHtml(uuid||'')}',${index})};}" title="${escapeHtml(name)}">${remove}${url?`<span class="cape-thumb"><img src="${escapeHtml(url)}" alt="${escapeHtml(tf('cape-texture-alt',{name}))}"></span>`:`<span class="cape-no-image">${escapeHtml(t('cape-no-preview'))}</span>`}<span class="cape-name">${escapeHtml(name)}</span><small class="cape-support ${isPrivate?'private':''}" data-translation-key="${supportKey}">${escapeHtml(supportLabel)}</small></div>`;
+      return `<div role="button" aria-disabled="${!selectable}" tabindex="${selectable?0:-1}" class="cape-option ${selectable?"":"unavailable"} ${cape.custom?"custom-cape-card":""} ${selectedCapeUuid===uuid?"selected":""}" onclick="selectCapeOption('${escapeHtml(uuid||'')}',${index})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectCapeOption('${escapeHtml(uuid||'')}',${index});}" title="${escapeHtml(name)}">${remove}${url?`<span class="cape-thumb"><img src="${escapeHtml(url)}" alt="${escapeHtml(tf('cape-texture-alt',{name}))}"></span>`:`<span class="cape-no-image">${escapeHtml(t('cape-no-preview'))}</span>`}<span class="cape-name">${escapeHtml(name)}</span><small class="cape-support ${isPrivate?"private":""}" data-translation-key="${selfSigningEnabled?supportKey:''}">${escapeHtml(supportLabel)}</small></div>`;
     }).join('')||`<p class="muted">${escapeHtml(t('cape-none-available'))}</p>`;
   } catch(e) { container.innerHTML=`<p class="muted">${escapeHtml(tf('cape-load-error',{error:e.message}))}</p><button type="button" class="secondary-btn" onclick="loadCapeOptions()">${escapeHtml(t('cape-retry'))}</button>`; }
 }
 
 async function uploadCustomCapeUrl() {
+  if(!canUploadCustomCape) return;
   const input=document.getElementById('custom-cape-url');
   const capeUrl=input?.value.trim();
   const capeName=document.getElementById('custom-cape-name')?.value.trim();
@@ -366,9 +376,11 @@ async function deleteCustomCape(uuid) {
 
 function selectCapeOption(uuid,index) {
   if(!uuid) return;
+  const cape=availableCapes[index];
+  const support=String(cape?.support??'').toLowerCase();
+  if(!cape?.custom&&!selfSigningEnabled&&(cape?.supported===false||['none','unsupported','false','unavailable'].includes(support))) return;
   selectedCapeUuid=uuid;
   document.querySelectorAll('.cape-option').forEach((node,i)=>node.classList.toggle('selected',i===index));
-  const cape=availableCapes[index];
   applySelectedCapePreview(index);
 }
 
@@ -1194,7 +1206,7 @@ const T = {
     'explore-title':'Explore Skins','explore-desc':'Browse these popular websites to find amazing skins, then import them using the Import tab!',
     'cape-title':'Cape','cape-description':'Choose a cape to preview it with your current skin.','cape-clear':'Clear','cape-apply':'Apply','cape-support-public':'Public','cape-support-private':'Private','cape-support-owner':'Owner only','cape-support-none':'Unsupported',
     'cape-name-placeholder':'Cape name','cape-url-placeholder':'https://example.com/cape.png','cape-name-label':'Cape name','cape-url-label':'Cape image URL','cape-add-custom':'Add custom cape','cape-public-upload':'Public cape','cape-delete':'Delete cape','cape-delete-title':'Delete cape','cape-delete-confirm':'Delete “%name%”? This cape will be permanently removed.','cape-delete-error':'Cape could not be deleted: %error%',
-    'cape-loading':'Loading capes…','cape-none-available':'No capes available.','cape-load-error':'Could not load available capes: %error%','cape-retry':'Retry','cape-account-required':'Account required','cape-available':'Available','cape-texture-alt':'%name% cape texture','cape-support-public':'Public','cape-support-owner':'Owner only','cape-support-none':'Unsupported',
+    'cape-loading':'Loading capes…','cape-none-available':'No capes available.','cape-load-error':'Could not load available capes: %error%','cape-retry':'Retry','cape-account-required':'Account required','cape-available':'Available','cape-texture-alt':'%name% cape texture',
     'cape-show':'Cape','cape-show-elytra':'Elytra','cape-no-preview':'No preview','cape-select-required':'Select a cape first.','cape-name-required':'Enter a name for your custom cape.','cape-url-required':'Enter a cape PNG URL.',
     'cape-add-error-title':'Cape error','cape-add-error':'Custom cape could not be added: %error%','cape-apply-error':'Cape update failed: %error%',
     'skin-error-title':'Skin error','skin-apply-error':'Failed: %error%','skin-delete-title':'Delete skin','skin-delete-confirm':'Delete this skin from history?','skin-delete-button':'Delete',
@@ -1230,7 +1242,7 @@ const T = {
     'explore-title':'Explorar Skins','explore-desc':'Explora estes sites populares para encontrar skins incríveis, depois importa-as usando a aba Importar!',
     'cape-title':'Capa','cape-description':'Escolhe uma capa para pré-visualizar com a skin atual.','cape-clear':'Limpar','cape-apply':'Aplicar','cape-support-public':'Pública','cape-support-private':'Privada','cape-support-owner':'Apenas proprietário','cape-support-none':'Não suportada',
     'cape-name-placeholder':'Nome da capa','cape-url-placeholder':'https://exemplo.com/capa.png','cape-name-label':'Nome da capa','cape-url-label':'URL da imagem da capa','cape-add-custom':'Adicionar capa personalizada','cape-public-upload':'Capa pública','cape-delete':'Eliminar capa','cape-delete-title':'Eliminar capa','cape-delete-confirm':'Eliminar “%name%”? Esta capa será removida permanentemente.','cape-delete-error':'Não foi possível eliminar a capa: %error%',
-    'cape-loading':'A carregar capas…','cape-none-available':'Não existem capas disponíveis.','cape-load-error':'Não foi possível carregar as capas: %error%','cape-retry':'Tentar novamente','cape-account-required':'Requer conta','cape-available':'Disponível','cape-texture-alt':'Textura da capa %name%','cape-support-public':'Pública','cape-support-owner':'Apenas proprietário','cape-support-none':'Não suportada',
+    'cape-loading':'A carregar capas…','cape-none-available':'Não existem capas disponíveis.','cape-load-error':'Não foi possível carregar as capas: %error%','cape-retry':'Tentar novamente','cape-account-required':'Requer conta','cape-available':'Disponível','cape-texture-alt':'Textura da capa %name%',
     'cape-show':'capa','cape-show-elytra':'élitros','cape-no-preview':'Sem pré-visualização','cape-select-required':'Seleciona primeiro uma capa.','cape-name-required':'Introduz um nome para a capa personalizada.','cape-url-required':'Introduz o URL de uma capa PNG.',
     'cape-add-error-title':'Erro na capa','cape-add-error':'Não foi possível adicionar a capa: %error%','cape-apply-error':'Falha ao atualizar a capa: %error%',
     'skin-error-title':'Erro na skin','skin-apply-error':'Falha: %error%','skin-delete-title':'Apagar skin','skin-delete-confirm':'Apagar esta skin do histórico?','skin-delete-button':'Apagar',
@@ -1250,7 +1262,7 @@ const T = {
     'presets-none':'暂无可用预设。','presets-none-personal':'你还没有预设。','presets-applied':'预设已应用！','presets-saved':'预设已保存！','presets-no-active':'没有可保存为预设的当前皮肤。','presets-delete-confirm':'确定删除此预设吗？',
     'explore-title':'探索皮肤','explore-desc':'浏览这些热门网站寻找喜欢的皮肤，然后通过“导入”页面导入。',
     'cape-title':'披风','cape-description':'选择披风，在当前皮肤模型上预览效果。','cape-clear':'清除','cape-apply':'应用','cape-support-public':'公开','cape-support-private':'私有','cape-support-owner':'仅所有者','cape-support-none':'不支持','cape-name-placeholder':'披风名称','cape-url-placeholder':'https://example.com/cape.png','cape-name-label':'披风名称','cape-url-label':'披风图片网址','cape-add-custom':'添加自定义披风','cape-public-upload':'公开披风','cape-delete':'删除披风','cape-delete-title':'删除披风','cape-delete-confirm':'确定删除“%name%”吗？此披风将被永久移除。','cape-delete-error':'删除披风失败：%error%',
-    'cape-loading':'正在加载披风…','cape-none-available':'暂无可用披风。','cape-load-error':'无法加载披风：%error%','cape-retry':'重试','cape-account-required':'需要账号','cape-available':'可用','cape-texture-alt':'%name% 披风纹理','cape-support-public':'公开','cape-support-owner':'仅所有者','cape-support-none':'不支持',
+    'cape-loading':'正在加载披风…','cape-none-available':'暂无可用披风。','cape-load-error':'无法加载披风：%error%','cape-retry':'重试','cape-account-required':'需要账号','cape-available':'可用','cape-texture-alt':'%name% 披风纹理',
     'cape-show':'披风','cape-show-elytra':'鞘翅','cape-no-preview':'无预览','cape-select-required':'请先选择一件披风。','cape-name-required':'请输入自定义披风名称。','cape-url-required':'请输入披风 PNG 图片网址。','cape-add-error-title':'披风错误','cape-add-error':'添加自定义披风失败：%error%','cape-apply-error':'更新披风失败：%error%',
     'skin-error-title':'皮肤错误','skin-apply-error':'操作失败：%error%','skin-delete-title':'删除皮肤','skin-delete-confirm':'确定从历史记录中删除此皮肤吗？','skin-delete-button':'删除','skin-delete-error-title':'删除失败','skin-delete-error':'无法删除皮肤：%error%','skin-delete-preset-error':'操作失败：%error%','skin-no-active':'没有当前皮肤，请先导入或设置皮肤。','skin-texture-unavailable':'无法从纹理数据中提取皮肤网址。',
     'dialog-title':'BetterSkin','dialog-ok':'确定','dialog-confirm':'确认','dialog-cancel':'取消',
